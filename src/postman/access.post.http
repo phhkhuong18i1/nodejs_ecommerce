@@ -4,7 +4,7 @@
 
 POST {{url_dev}}shop/signup
 Content-Type: application/json
-x-api-key: 41b293f55ff7834d7b618735474e42994b9c7f447d6dd7b268b415e1215cb059d8270629aced58b1b8376032d557f66a988608cffd08a1409e20a38d317bd6aa
+x-api-key: 77aa72aeed58feda3972cf97fc60fce5c99ad1c3f8c7a6f288c35d1155754c9fec6229b6df8f67d3d36870e495f9a5790b8e7f397cb6797b10c21be1b05ab5b7
 
 {
     "name": "Shop TIPS",
