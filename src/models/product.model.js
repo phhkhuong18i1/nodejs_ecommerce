@@ -1,6 +1,7 @@
 "use strict";
 
 const { model, Schema } = require("mongoose");
+const slugify = require("slugify");
 
 const DOCUMENT_NAME = "Product";
 const COLLECTION_NAME = "Products";
@@ -22,6 +23,10 @@ const productSchema = new Schema(
     product_description: {
       type: String,
     },
+    product_slug: {
+      type: String,
+      unique: true,
+    },
     product_quantity: {
       type: Number,
       required: true,
@@ -40,12 +45,50 @@ const productSchema = new Schema(
       type: Schema.Types.Mixed,
       required: true,
     },
+    //more
+    product_ratingAverage: {
+      type: Number,
+      default: 4.5,
+      min:[1, "Rating must be at least 1"],
+      max:[5, "Rating must be at most 5"],
+      set: (v) => Math.round(v * 10) / 10, // round to one decimal place
+    },
+    product_variations: {
+      type: [String],
+      default: [],
+    },
+    isDraft: {
+      type: Boolean,
+      default: true,
+      select: false, // do not return this field by default
+      index: true, // index for faster queries
+    },
+    isPublished: {
+      type: Boolean,
+      default: false,
+      select: false, // do not return this field by default
+      index: true, // index for faster queries
+    },
   },
   {
     timestamps: true,
     collection: COLLECTION_NAME,
   }
 );
+
+// cxreate indexes for faster queries
+productSchema.index({ product_name: "text", product_description: "text" });
+
+// Document middleware to create slug before saving
+productSchema.pre("save", function (next) {
+  if (this.isModified("product_name")) {
+    this.product_slug = slugify(this.product_name, {
+      lower: true,
+      strict: true,
+    });
+  }
+  next();
+});
 
 const clothingSchema = new Schema(
   {

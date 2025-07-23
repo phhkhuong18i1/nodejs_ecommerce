@@ -1,5 +1,6 @@
 "use strict";
 
+const e = require("express");
 const { BadRequestError } = require("../core/error.response");
 const {
   product,
@@ -7,27 +8,107 @@ const {
   electronic,
   furniture,
 } = require("../models/product.model");
+const {
+  findAllDraftsForShop,
+  publishProductByShop,
+  findAllPublishForShop,
+  unPublishProductByShop,
+  searchProduct,
+  findAllProducts,
+  findProduct,
+  updateProductById,
+} = require("../models/repositories/product.repo");
+const { updateNestedObjectParser, removeUndefinedObject } = require("../utils");
+const { insertInventory } = require("../models/repositories/inventory.repo");
 
 //define Factory class to create product
 
 class ProductFactory {
-    static productRegistry = {};
+  static productRegistry = {};
 
-    static registerProductType(type, ProductClass) {
-        if (this.productRegistry[type]) {
-            throw new BadRequestError(`Product type ${type} already registered`);
-        }
-        this.productRegistry[type] = ProductClass;
-    }   
-
-    static createProduct = async (type, productData) => {     
-        const ProductClass = this.productRegistry[type];
-        if (!ProductClass) {
-            throw new BadRequestError("Invalid product type");
-        }
-        const productInstance = new ProductClass(productData);
-        return await productInstance.createProduct();
+  static registerProductType(type, ProductClass) {
+    if (this.productRegistry[type]) {
+      throw new BadRequestError(`Product type ${type} already registered`);
     }
+    this.productRegistry[type] = ProductClass;
+  }
+
+  static createProduct = async (type, productData) => {
+    const ProductClass = this.productRegistry[type];
+    if (!ProductClass) {
+      throw new BadRequestError("Invalid product type");
+    }
+    const productInstance = new ProductClass(productData);
+    return await productInstance.createProduct();
+  };
+
+  static updateProduct = async (type, productId, payload) => {
+    const ProductClass = this.productRegistry[type];
+    if (!ProductClass) {
+      throw new BadRequestError("Invalid product type");
+    }
+    const productInstance = new ProductClass(payload);
+    return await productInstance.updateProduct(productId);
+  };
+  // put
+  static async unPublishProductByShop({ productId, product_shop }) {
+    return await unPublishProductByShop({ productId, product_shop });
+  }
+
+  static async publishProductByShop({ productId, product_shop }) {
+    return await publishProductByShop({ productId, product_shop });
+  }
+
+  //query all drafts for shop
+  static async findAllDraftsForShop({ product_shop, limit = 50, skip = 0 }) {
+    const query = {
+      product_shop,
+      isDraft: true,
+    };
+
+    return await findAllDraftsForShop({ query, limit, skip });
+  }
+
+  static async findAllPublishForShop({ product_shop, limit = 50, skip = 0 }) {
+    const query = {
+      product_shop,
+      isPublished: true,
+    };
+
+    return await findAllPublishForShop({ query, limit, skip });
+  }
+
+  static async searchProduct({ keySearch, limit = 50, skip = 0 }) {
+    return await searchProduct({ keySearch, limit, skip });
+  }
+
+  static async findAllProducts({
+    limit = 50,
+    sort = "ctime",
+    page = 1,
+    filter = { isPublished: true },
+    select = [
+      "product_name",
+      "product_thumb",
+      "product_price",
+      "product_description",
+    ],
+  }) {
+    return await findAllProducts({
+      limit,
+      sort,
+      page,
+      filter,
+      select,
+    });
+  }
+
+  static async findProduct({
+    productId,
+    unSelect = ["__v", "product_variations"],
+  }) {
+    return await findProduct({ productId, unSelect });
+  }
 }
 
 //define Product class to handle product operations
@@ -44,14 +125,31 @@ class Product {
   }
 
   async createProduct(product_id) {
-    return await product.create({ ...this, _id: product_id });
+    const newProduct = await product.create({ ...this, _id: product_id });
+    if (newProduct) {
+      await insertInventory({
+        productId: newProduct._id,
+        shopId: this.product_shop,
+        stock: this.product_quantity,
+      });
+    }
+
+    return newProduct;
+  }
+
+  //update product
+  async updateProduct(productId, payload) {
+    return await updateProductById(productId, payload, product, true);
   }
 }
 
 //define sub-class for clothing products
 class Clothing extends Product {
   async createProduct() {
-    const newClothing = await clothing.create(this.product_attributes);
+    const newClothing = await clothing.create({
+      ...this.product_attributes,
+      product_shop: this.product_shop,
+    });
     if (!newClothing)
       throw new BadRequestError("Failed to create clothing product");
 
@@ -59,6 +157,25 @@ class Clothing extends Product {
     if (!newProduct) throw new BadRequestError("Failed to create product");
 
     return newProduct;
+  }
+
+  async updateProduct(productId) {
+    //1. remove attr has not undefined value
+    const objectParams = removeUndefinedObject(this);
+    //2. check update o cho nao
+    if (objectParams.product_attributes) {
+      await updateProductById(
+        productId,
+        updateNestedObjectParser(objectParams.product_attributes),
+        clothing
+      );
+    }
+
+    const updateProduct = await super.updateProduct(
+      productId,
+      updateNestedObjectParser(objectParams)
+    );
+    return updateProduct;
   }
 }
 
@@ -76,6 +193,25 @@ class Electronic extends Product {
     if (!newProduct) throw new BadRequestError("Failed to create product");
 
     return newProduct;
+  }
+
+  async updateProduct(productId) {
+    //1. remove attr has not undefined value
+    const objectParams = removeUndefinedObject(this);
+    //2. check update o cho nao
+    if (objectParams.product_attributes) {
+      await updateProductById(
+        productId,
+        updateNestedObjectParser(objectParams.product_attributes),
+        electronic
+      );
+    }
+
+    const updateProduct = await super.updateProduct(
+      productId,
+      updateNestedObjectParser(objectParams)
+    );
+    return updateProduct;
   }
 }
 
