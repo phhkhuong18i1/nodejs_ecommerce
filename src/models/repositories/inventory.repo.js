@@ -1,5 +1,6 @@
 "use strict";
-const  inventory  = require("../inventory.model");
+const { convertToObjectId } = require("../../utils");
+const inventory = require("../inventory.model");
 const { Types } = require("mongoose");
 const insertInventory = async ({
   productId,
@@ -17,6 +18,28 @@ const insertInventory = async ({
   return await newInventory.save();
 };
 
+const reservationInventory = async ({ productId, quantiy, cartId }) => {
+  const query = {
+      inven_productId: convertToObjectId(productId),
+      inven_stock: { $gte: quantiy },
+    },
+    updateSet = {
+      $inc: {
+        inven_stock: -quantiy,
+      },
+      $push: {
+        inven_reservations: {
+          quantiy,
+          cartId,
+          createOn: new Date()
+        },
+      },
+    }, options = { upsert: true, new: true};
+
+    return await inventory.updateOne(query, updateSet)
+};
+
 module.exports = {
   insertInventory,
-}
+  reservationInventory
+};
